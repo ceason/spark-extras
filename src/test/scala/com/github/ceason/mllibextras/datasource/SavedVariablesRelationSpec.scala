@@ -18,4 +18,20 @@ class SavedVariablesRelationSpec extends FlatSpec
 
 		assert(true)
 	}
+
+
+	it must "also work with sql" in {
+
+		val df = spark.read
+			.format("com.github.ceason.mllibextras.datasource")
+			.load("TrainingDummyOutput_20161016-1.lua")
+
+		df.createOrReplaceTempView("svr")
+
+		val res = spark.sql("select * from svr limit 10")
+
+		val local = res.collect()
+
+		assert(local.length == 10)
+	}
 }

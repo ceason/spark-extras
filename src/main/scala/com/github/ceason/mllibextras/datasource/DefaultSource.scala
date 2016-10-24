@@ -26,7 +26,13 @@ class DefaultSource extends RelationProvider {
 	}
 }
 
-
+case class SVDamage(spellId: Long, amount: Long)
+case class SVAction(spellId: Long)
+case class SVRow(
+	timestamp: Timestamp,
+	action: Option[SVAction] = None,
+	damage: Option[SVDamage] = None
+)
 
 class SavedVariablesRelation(
 	@transient val sqlContext: SQLContext,
@@ -35,13 +41,7 @@ class SavedVariablesRelation(
 	with TableScan
 	with Serializable {
 
-	case class SVDamage(spellId: Long, amount: Long)
-	case class SVAction(spellId: Long)
-	case class SVRow(
-		timestamp: Timestamp,
-		action: Option[SVAction] = None,
-		damage: Option[SVDamage] = None
-	)
+
 
 
 	val schema: StructType = {
