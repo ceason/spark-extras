@@ -1,13 +1,11 @@
-package com.github.ceason.mllibextras
+package com.github.ceason.mllibextras.transformer
 
-import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.ml.Transformer
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.util.Identifiable
-import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.types.{StringType, StructField, StructType}
-
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
+import org.apache.spark.sql.{DataFrame, Dataset}
 
 /**
   *

@@ -1,5 +1,6 @@
 package com.github.ceason.mllibextras
 
+import com.github.ceason.mllibextras.transformer.HelloWorldTransformer
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest.FlatSpec
 
