@@ -23,13 +23,23 @@ libraryDependencies ++= Seq(
 
 	// spark
 //		"org.apache.spark" %% "spark-core"  % "2.0.1" % Provided,
-//		"org.apache.spark" %% "spark-sql"   % "2.0.1" % Provided,
-	"org.apache.spark" %% "spark-mllib" % "2.0.1" % Provided,
+	"org.apache.spark" %% "spark-hive-thriftserver" % "2.0.1", // % Provided,
+	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
+
+
+	// proto
+	"com.trueaccord.scalapb" %% "scalapb-runtime"      % "0.5.43" % "protobuf",
 
 
 	// test deps
 	"org.apache.spark" %% "spark-mllib" % "2.0.1" % Test,
 	"org.scalatest"    %% "scalatest"   % "2.2.5" % Test
 )
+
+PB.targets in Compile := Seq(
+//	PB.gens.java → (sourceManaged in Compile).value,
+	scalapb.gen(javaConversions = false, grpc = false) → (sourceManaged in Compile).value
+)
+
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
