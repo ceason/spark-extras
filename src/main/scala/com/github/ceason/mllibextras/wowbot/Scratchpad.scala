@@ -2,7 +2,7 @@ package com.github.ceason.mllibextras.wowbot
 
 import com.github.ceason.mllibextras.implicits._
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, KeyValueGroupedDataset}
+import org.apache.spark.sql.{Dataset, KeyValueGroupedDataset, SparkSession}
 import wowbot.gamedata.GameState
 
 /**
@@ -11,8 +11,11 @@ import wowbot.gamedata.GameState
 trait Scratchpad extends Actions
 	with GameStates {
 
+	val spark: SparkSession
 
 	val maxGap: Int
+
+	import spark.implicits._
 
 
 	lazy val bucketedGStates: KeyValueGroupedDataset[Long, GameState] = {
@@ -34,8 +37,8 @@ trait Scratchpad extends Actions
 				as.flatMap{ a ⇒
 					sortedGs
 						.find(_.combatLogTimestamp < a.timestamp.getTime)
-					    .map(a → _)
-					    .toList
+						.map(a → _)
+						.toList
 				}
 		}
 	}
@@ -43,5 +46,3 @@ trait Scratchpad extends Actions
 
 
 }
-
-case class Bucketed[A](bucket: Long, value: A)

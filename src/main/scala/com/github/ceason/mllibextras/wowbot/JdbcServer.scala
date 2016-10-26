@@ -13,23 +13,29 @@ object JdbcServer {
 
 	def main(args: Array[String]): Unit = {
 
-		val spark: SparkSession = SparkSession.builder
+		val ss: SparkSession = SparkSession.builder
+			.config("spark.sql.hive.thriftServer.singleSession", true)
+			.enableHiveSupport()
 			.master("local")
 			.appName("spark session example")
 			.getOrCreate()
 
+		import ss.implicits._
 
 		val sp = new Scratchpad {
+			override val spark: SparkSession = ss
 			override val maxGap: Int = 300
 			override val gameStates: Dataset[GameState] = spark.createDataset(Seq.empty[GameState])
 			override val actions: Dataset[ActionEvent] = spark.createDataset(Seq.empty[ActionEvent])
 		}
 
 		// TODO: reflectively register all of these things
-		sp.actionWithGS.createOrReplaceTempView("actionWithGS")
+		sp.actionWithGS
+			.toDF("action", "gameState")
+			.createOrReplaceTempView("actionWithGS")
 
 
-		HiveThriftServer2.startWithContext(spark.sqlContext)
+		HiveThriftServer2.startWithContext(ss.sqlContext)
 
 
 	}
