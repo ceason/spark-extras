@@ -10,9 +10,12 @@ import org.apache.spark.sql.{DataFrame, Dataset}
 /**
   *
   */
-class HelloWorldTransformer(
-	val uid: String = Identifiable.randomUID("helloTransformer")
-) extends Transformer {
+class HelloWorldTransformer(val uid: String)
+	extends Transformer {
+
+
+	// Empty constructor for reflective runtime instantiation from R/Python
+	def this() = this(Identifiable.randomUID("HelloWorldTransformer"))
 
 	private val field = StructField("extraField", StringType)
 

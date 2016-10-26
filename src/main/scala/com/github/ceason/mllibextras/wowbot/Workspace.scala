@@ -8,14 +8,16 @@ import wowbot.gamedata.GameState
 /**
   *
   */
-trait Scratchpad extends Actions
-	with GameStates {
+trait Workspace {
 
 	val spark: SparkSession
+	import spark.implicits._
 
+
+	val actions: Dataset[ActionEvent]
+	val gameStates: Dataset[GameState]
 	val maxGap: Int
 
-	import spark.implicits._
 
 
 	lazy val bucketedGStates: KeyValueGroupedDataset[Long, GameState] = {
@@ -40,7 +42,7 @@ trait Scratchpad extends Actions
 						.map(a → _)
 						.toList
 				}
-		}
+		}.cache()
 	}
 
 
