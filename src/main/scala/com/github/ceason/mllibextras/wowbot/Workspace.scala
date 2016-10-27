@@ -4,11 +4,12 @@ import com.github.ceason.mllibextras.implicits._
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
+import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorAssembler, VectorIndexer}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Dataset, KeyValueGroupedDataset, SparkSession}
 import wowbot.gamedata.GameState
 import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
+import org.apache.spark.sql.types.StructType
 
 /**
   *
@@ -24,7 +25,6 @@ trait Workspace {
 	val maxGap: Int
 
 
-	val featurize: GameState ⇒ MLVector
 
 
 	val actionWithGS: Dataset[(ActionEvent, GameState)] = {
@@ -48,11 +48,25 @@ trait Workspace {
 
 	}
 
-	val data: Dataset[FeaturizedData] = {
+
+
+	val data: Dataset[ProjectData] = {
 		actionWithGS.map{ case (a, gs) ⇒
-			FeaturizedData(a, a.spellId, gs, featurize(gs))
+			ProjectData(a, a.spellId, gs)
 		}
 	}
+
+	val featurizer: DefaultFeaturizer = DefaultFeaturizer
+		.fromDS(data.map(_.gameState))
+	    .setInputCol("gameState")
+	    .setOutputCol("gameStateFeatures")
+
+	// vector assembler that takes stuff from gameStateFeatures col -> outputs to features col
+	val assembler: VectorAssembler = new VectorAssembler()
+	    .setInputCols(featurizer.getFeatures.map{ feature ⇒
+			s"${featurizer.getOutputCol}.$feature"
+		})
+	    .setOutputCol("features")
 
 	// Index labels, adding metadata to the label column.
 	// Fit on whole dataset to include all labels in index.
@@ -84,7 +98,13 @@ trait Workspace {
 		.setLabels(labelIndexer.labels)
 
 	val pipeline = new Pipeline()
-	    .setStages(Array(labelIndexer, featureIndexer, rf, labelConverter))
+	    .setStages(Array(
+			featurizer,
+			assembler,
+			labelIndexer,
+			featureIndexer,
+			rf,
+			labelConverter))
 
 	val model = pipeline.fit(train)
 

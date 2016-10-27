@@ -11,7 +11,6 @@ object Main extends LocalSpark {
 
 		val ws = new Defaults(spark)
 			with Workspace
-			with DefaultFeaturizer
 
 
 		val x = 1

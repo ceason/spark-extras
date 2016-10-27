@@ -3,7 +3,6 @@ package com.github.ceason.mllibextras.wowbot
 import java.sql.Timestamp
 
 import wowbot.gamedata.GameState
-import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
 
 /**
   *
@@ -13,11 +12,10 @@ case class ActionEvent(
 	spellId: Long
 )
 
-case class FeaturizedData(
+case class ProjectData(
 	actionEvent: ActionEvent,
 	spellId: Long,
-	gameState: GameState,
-	features: MLVector
+	gameState: GameState
 )
 
 case class Feature(name: String, value: Double)
