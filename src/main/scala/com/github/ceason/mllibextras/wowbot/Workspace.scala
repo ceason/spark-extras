@@ -121,6 +121,8 @@ trait Workspace {
 
 	println(s"Test Error = ${1 - accuracy}")
 
+	val x = 1
+
 
 
 

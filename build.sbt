@@ -24,7 +24,7 @@ libraryDependencies ++= Seq(
 	// spark
 //		"org.apache.spark" %% "spark-core"  % "2.0.1" % Provided,
 //	"org.apache.spark" %% "spark-hive-thriftserver" % "2.0.1" % Provided,
-	"org.apache.spark" %% "spark-mllib"             % "2.0.1" % Provided,
+	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
 
 
 	// proto

@@ -92,6 +92,8 @@ object DefaultFeaturizer {
 	}
 
 	def fromDS(ds: Dataset[GameState]): DefaultFeaturizer = {
+		import ds.sparkSession.implicits._
+
 		// pull out unique feature names
 		val featureNames = ds
 			.flatMap(gs ⇒ featurize(gs).map(_.name))
