@@ -26,6 +26,8 @@ libraryDependencies ++= Seq(
 //	"org.apache.spark" %% "spark-hive-thriftserver" % "2.0.1" % Provided,
 	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
 
+	"org.xerial" % "sqlite-jdbc" % "3.14.2.1",
+
 
 	// proto
 	"com.trueaccord.scalapb" %% "scalapb-runtime"      % "0.5.43" % "protobuf",

@@ -1,10 +1,12 @@
 package com.github.ceason.mllibextras.kaggle
 
+import java.util.Properties
+
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.ml.feature._
-import org.apache.spark.sql.{Column, DataFrame, SparkSession}
+import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
 
 /**
@@ -49,9 +51,7 @@ trait Workspace {
 	val featureCols: Array[String] = featureExprs.keys.toArray
 
 
-
 	val inputColExpr: Seq[Column] = featureExprs.toSeq.map{case (name, ex) ⇒ ex.as(name)}
-
 
 	// $example on$
 	// Load training data
@@ -70,45 +70,57 @@ trait Workspace {
 	val Array(training: DataFrame, testing: DataFrame) = data.randomSplit(Array(0.7, 0.3))
 
 
-	val unlabeledData: DataFrame = spark.read
-		.option("nullValue", "NA")
-		.option("header", true)
-		.option("inferSchema", true)
-		.csv("src/main/resources/test.csv")
-		.select(inputColExpr :_*)
+	val unlabeledData: DataFrame = {
+		spark.read
+			.option("nullValue", "NA")
+			.option("header", true)
+			.option("inferSchema", true)
+			.csv("src/main/resources/test.csv")
+			.select(inputColExpr :_*)
+	}
 
 
-
-	val assembler: VectorAssembler = new VectorAssembler()
-	    .setInputCols(featureCols)
-	    .setOutputCol("features")
-
-
-	val featureIndexer: VectorIndexerModel = new VectorIndexer()
-		.setInputCol("features")
-		.setOutputCol("indexedFeatures")
-		.setMaxCategories(4)
-		.fit(assembler.transform(data))
+	val assembler: VectorAssembler = {
+		new VectorAssembler()
+			.setInputCols(featureCols)
+			.setOutputCol("features")
+	}
 
 
-	val labelIndexer: StringIndexerModel = new StringIndexer()
-		.setInputCol("label")
-		.setOutputCol("indexedLabel")
-		.fit(data)
+	val featureIndexer: VectorIndexerModel = {
+		new VectorIndexer()
+			.setInputCol("features")
+			.setOutputCol("indexedFeatures")
+			.setMaxCategories(4)
+			.fit(assembler.transform(data))
+	}
 
 
-	val lr: LogisticRegression = new LogisticRegression()
-		.setFeaturesCol("indexedFeatures")
-		.setLabelCol("indexedLabel")
-		.setPredictionCol("prediction")
-		.setMaxIter(1000)
-		.setRegParam(0.3)
-		.setElasticNetParam(0.8)
+	val labelIndexer: StringIndexerModel = {
+		new StringIndexer()
+			.setInputCol("label")
+			.setOutputCol("indexedLabel")
+			.fit(data)
+	}
 
-	val labelConverter: IndexToString = new IndexToString()
-		.setInputCol("prediction")
-		.setOutputCol("predictedLabel")
-		.setLabels(labelIndexer.labels)
+
+	val lr: LogisticRegression = {
+		new LogisticRegression()
+//			.setFeaturesCol("indexedFeatures")
+			.setFeaturesCol("features")
+			.setLabelCol("indexedLabel")
+			.setPredictionCol("prediction")
+			.setMaxIter(1000)
+			.setRegParam(0.3)
+			.setElasticNetParam(0.8)
+	}
+
+	val labelConverter: IndexToString = {
+		new IndexToString()
+			.setInputCol("prediction")
+			.setOutputCol("predictedLabel")
+			.setLabels(labelIndexer.labels)
+	}
 
 	val pipeline: Pipeline = new Pipeline()
 	    .setStages(Array(
@@ -122,7 +134,6 @@ trait Workspace {
 	val model: PipelineModel = pipeline.fit(training)
 
 
-
 	val predictions: DataFrame = model.transform(testing)
 
 	val evaluator: BinaryClassificationEvaluator = new BinaryClassificationEvaluator()
@@ -130,7 +141,15 @@ trait Workspace {
 
 	val accuracy: Double = evaluator.evaluate(predictions)
 
-	val x = 1
+	println(s"accuracy: $accuracy")
+
+	// dump to sqlite
+	predictions.coalesce(1)
+		.drop("features", "indexedFeatures", "rawPrediction", "probability")
+		.write
+		.mode(SaveMode.Overwrite)
+		.jdbc("jdbc:sqlite:x.db", "predictions", new Properties)
+
 	spark.stop()
 
 }
