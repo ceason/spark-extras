@@ -6,14 +6,19 @@ import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.ml.feature._
+import org.apache.spark.ml.linalg.DenseVector
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.StructField
+import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
 
 /**
   *
   */
 //noinspection TypeAnnotation
 trait Workspace {
+	import Workspace._
 
 
 	val spark: SparkSession = SparkSession
@@ -23,29 +28,29 @@ trait Workspace {
 		.getOrCreate()
 
 	val featureExprs: Map[String, Column] = Map(
-		"limit_bal" → expr("cast(coalesce(limit_bal, 0) as double)"),
 		"sex"       → expr("cast(coalesce(sex      , 0) as double)"),
 		"education" → expr("cast(coalesce(education, 0) as double)"),
 		"marriage"  → expr("cast(coalesce(marriage , 0) as double)"),
 		"age"       → expr("cast(coalesce(age      , 0) as double)"),
 		"pay_1"     → expr("cast(coalesce(pay_1    , 0) as double)"),
-		"pay_2"     → expr("cast(coalesce(pay_2    , 0) as double)"),
-		"pay_3"     → expr("cast(coalesce(pay_3    , 0) as double)"),
-		"pay_4"     → expr("cast(coalesce(pay_4    , 0) as double)"),
-		"pay_5"     → expr("cast(coalesce(pay_5    , 0) as double)"),
-		"pay_6"     → expr("cast(coalesce(pay_6    , 0) as double)"),
-		"bill_amt1" → expr("cast(coalesce(bill_amt1, 0) as double)"),
-		"bill_amt2" → expr("cast(coalesce(bill_amt2, 0) as double)"),
-		"bill_amt3" → expr("cast(coalesce(bill_amt3, 0) as double)"),
-		"bill_amt4" → expr("cast(coalesce(bill_amt4, 0) as double)"),
-		"bill_amt5" → expr("cast(coalesce(bill_amt5, 0) as double)"),
-		"bill_amt6" → expr("cast(coalesce(bill_amt6, 0) as double)"),
-		"pay_amt1"  → expr("cast(coalesce(pay_amt1 , 0) as double)"),
-		"pay_amt2"  → expr("cast(coalesce(pay_amt2 , 0) as double)"),
-		"pay_amt3"  → expr("cast(coalesce(pay_amt3 , 0) as double)"),
-		"pay_amt4"  → expr("cast(coalesce(pay_amt4 , 0) as double)"),
-		"pay_amt5"  → expr("cast(coalesce(pay_amt5 , 0) as double)"),
-		"pay_amt6"  → expr("cast(coalesce(pay_amt6 , 0) as double)")
+//		"pay_2"     → expr("cast(coalesce(pay_2    , 0) as double)"),
+//		"pay_3"     → expr("cast(coalesce(pay_3    , 0) as double)"),
+//		"pay_4"     → expr("cast(coalesce(pay_4    , 0) as double)"),
+//		"pay_5"     → expr("cast(coalesce(pay_5    , 0) as double)"),
+//		"pay_6"     → expr("cast(coalesce(pay_6    , 0) as double)"),
+//		"bill_amt1" → expr("cast(coalesce(bill_amt1, 0) as double)"),
+//		"bill_amt2" → expr("cast(coalesce(bill_amt2, 0) as double)"),
+//		"bill_amt3" → expr("cast(coalesce(bill_amt3, 0) as double)"),
+//		"bill_amt4" → expr("cast(coalesce(bill_amt4, 0) as double)"),
+//		"bill_amt5" → expr("cast(coalesce(bill_amt5, 0) as double)"),
+//		"bill_amt6" → expr("cast(coalesce(bill_amt6, 0) as double)"),
+//		"pay_amt1"  → expr("cast(coalesce(pay_amt1 , 0) as double)"),
+//		"pay_amt2"  → expr("cast(coalesce(pay_amt2 , 0) as double)"),
+//		"pay_amt3"  → expr("cast(coalesce(pay_amt3 , 0) as double)"),
+//		"pay_amt4"  → expr("cast(coalesce(pay_amt4 , 0) as double)"),
+//		"pay_amt5"  → expr("cast(coalesce(pay_amt5 , 0) as double)"),
+//		"pay_amt6"  → expr("cast(coalesce(pay_amt6 , 0) as double)"),
+		"limit_bal" → expr("cast(coalesce(limit_bal, 0) as double)")
 	)
 
 	val featureCols: Array[String] = featureExprs.keys.toArray
@@ -143,13 +148,46 @@ trait Workspace {
 
 	println(s"accuracy: $accuracy")
 
-	// dump to sqlite
+
+
+
+
+
+
+	// dump to sql
 	predictions.coalesce(1)
-		.drop("features", "indexedFeatures", "rawPrediction", "probability")
+		.select(asDBCompatible(predictions.schema.fields) :_*)
+//		.drop("features", "indexedFeatures", "rawPrediction", "probability")
+//		.withColumn("testArray", array(lit(1), lit(2), lit(3)))
 		.write
 		.mode(SaveMode.Overwrite)
-		.jdbc("jdbc:sqlite:x.db", "predictions", new Properties)
+		.jdbc("jdbc:postgresql://localhost/workspace?user=postgres&password=password", "predictions", new Properties)
+//		.jdbc("jdbc:sqlite:x.db", "predictions", new Properties)
 
 	spark.stop()
 
+}
+
+
+object Workspace {
+
+
+	def asDBCompatible(cols: Seq[StructField]): Seq[Column] = {
+		val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
+		/*
+			converting vectors to array
+				- build select list by..
+				- go over all cols in schema
+				- if vector, do vec2arr
+				- else pass through
+	 	*/
+		cols.map{
+			case StructField(name, dataType, _, _) ⇒ dataType match {
+				case t if t.typeName == "vector" ⇒
+					vec2arr(col(name)) as name
+				case other ⇒
+					col(name) as name
+			}
+		}
+	}
 }

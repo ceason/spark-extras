@@ -27,6 +27,7 @@ libraryDependencies ++= Seq(
 	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
 
 	"org.xerial" % "sqlite-jdbc" % "3.14.2.1",
+	"org.postgresql" % "postgresql" % "9.4.1211.jre7",
 
 
 	// proto
