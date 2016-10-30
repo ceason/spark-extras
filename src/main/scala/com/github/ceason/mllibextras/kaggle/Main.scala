@@ -12,5 +12,9 @@ object Main {
 
 		}
 
+		MarkusKaggle.runJob()
+
+
+
 	}
 }

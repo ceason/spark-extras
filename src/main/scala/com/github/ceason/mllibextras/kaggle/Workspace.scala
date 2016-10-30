@@ -4,7 +4,7 @@ import java.util.Properties
 
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.LogisticRegression
-import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, RegressionEvaluator}
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.DenseVector
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -28,29 +28,30 @@ trait Workspace {
 		.getOrCreate()
 
 	val featureExprs: Map[String, Column] = Map(
-		"sex"       → expr("cast(coalesce(sex      , 0) as double)"),
-		"education" → expr("cast(coalesce(education, 0) as double)"),
-		"marriage"  → expr("cast(coalesce(marriage , 0) as double)"),
-		"age"       → expr("cast(coalesce(age      , 0) as double)"),
-		"pay_1"     → expr("cast(coalesce(pay_1    , 0) as double)"),
-//		"pay_2"     → expr("cast(coalesce(pay_2    , 0) as double)"),
-//		"pay_3"     → expr("cast(coalesce(pay_3    , 0) as double)"),
-//		"pay_4"     → expr("cast(coalesce(pay_4    , 0) as double)"),
-//		"pay_5"     → expr("cast(coalesce(pay_5    , 0) as double)"),
-//		"pay_6"     → expr("cast(coalesce(pay_6    , 0) as double)"),
-//		"bill_amt1" → expr("cast(coalesce(bill_amt1, 0) as double)"),
-//		"bill_amt2" → expr("cast(coalesce(bill_amt2, 0) as double)"),
-//		"bill_amt3" → expr("cast(coalesce(bill_amt3, 0) as double)"),
-//		"bill_amt4" → expr("cast(coalesce(bill_amt4, 0) as double)"),
-//		"bill_amt5" → expr("cast(coalesce(bill_amt5, 0) as double)"),
-//		"bill_amt6" → expr("cast(coalesce(bill_amt6, 0) as double)"),
-//		"pay_amt1"  → expr("cast(coalesce(pay_amt1 , 0) as double)"),
-//		"pay_amt2"  → expr("cast(coalesce(pay_amt2 , 0) as double)"),
-//		"pay_amt3"  → expr("cast(coalesce(pay_amt3 , 0) as double)"),
-//		"pay_amt4"  → expr("cast(coalesce(pay_amt4 , 0) as double)"),
-//		"pay_amt5"  → expr("cast(coalesce(pay_amt5 , 0) as double)"),
-//		"pay_amt6"  → expr("cast(coalesce(pay_amt6 , 0) as double)"),
-		"limit_bal" → expr("cast(coalesce(limit_bal, 0) as double)")
+		"male"		→ expr("cast(if(sex=1,1,0) as double)"),
+//		"sex"       → expr("coalesce(cast(sex       as double), 0.0)"),
+		"education" → expr("coalesce(cast(education as double), 0.0)"),
+		"marriage"  → expr("coalesce(cast(marriage  as double), 0.0)"),
+		"age"       → expr("coalesce(cast(age       as double), 0.0)"),
+		"pay_1"     → expr("coalesce(cast(pay_1     as double), 0.0)"),
+//		"pay_2"     → expr("coalesce(cast(pay_2     as double), 0.0)"),
+//		"pay_3"     → expr("coalesce(cast(pay_3     as double), 0.0)"),
+//		"pay_4"     → expr("coalesce(cast(pay_4     as double), 0.0)"),
+//		"pay_5"     → expr("coalesce(cast(pay_5     as double), 0.0)"),
+//		"pay_6"     → expr("coalesce(cast(pay_6     as double), 0.0)"),
+//		"bill_amt1" → expr("coalesce(cast(bill_amt1 as double), 0.0)"),
+//		"bill_amt2" → expr("coalesce(cast(bill_amt2 as double), 0.0)"),
+//		"bill_amt3" → expr("coalesce(cast(bill_amt3 as double), 0.0)"),
+//		"bill_amt4" → expr("coalesce(cast(bill_amt4 as double), 0.0)"),
+//		"bill_amt5" → expr("coalesce(cast(bill_amt5 as double), 0.0)"),
+//		"bill_amt6" → expr("coalesce(cast(bill_amt6 as double), 0.0)"),
+//		"pay_amt1"  → expr("coalesce(cast(pay_amt1  as double), 0.0)"),
+//		"pay_amt2"  → expr("coalesce(cast(pay_amt2  as double), 0.0)"),
+//		"pay_amt3"  → expr("coalesce(cast(pay_amt3  as double), 0.0)"),
+//		"pay_amt4"  → expr("coalesce(cast(pay_amt4  as double), 0.0)"),
+//		"pay_amt5"  → expr("coalesce(cast(pay_amt5  as double), 0.0)"),
+//		"pay_amt6"  → expr("coalesce(cast(pay_amt6  as double), 0.0)"),
+		"limit_bal" → expr("coalesce(cast(limit_bal as double), 0.0)")
 	)
 
 	val featureCols: Array[String] = featureExprs.keys.toArray
@@ -67,12 +68,20 @@ trait Workspace {
 			.option("inferSchema", true)
 			.csv("src/main/resources/train.csv")
 
-		val cols = inputColExpr :+ (col("default_oct") as 'label)
+		val cols = {
+			col("customer_id") +:
+			inputColExpr :+
+			(col("default_oct") as 'label)
+		}
 
 		raw.select(cols :_*)
 	}
 
-	val Array(training: DataFrame, testing: DataFrame) = data.randomSplit(Array(0.7, 0.3))
+	val trainPct: Double = 0.8
+
+	val Array(training: DataFrame, testing: DataFrame) = {
+		data.randomSplit(Array(trainPct, 1-trainPct), 12345)
+	}
 
 
 	val unlabeledData: DataFrame = {
@@ -115,9 +124,11 @@ trait Workspace {
 			.setFeaturesCol("features")
 			.setLabelCol("indexedLabel")
 			.setPredictionCol("prediction")
-			.setMaxIter(1000)
-			.setRegParam(0.3)
-			.setElasticNetParam(0.8)
+			.setMaxIter(100)
+			.setRegParam(0.0)
+			.setElasticNetParam(0.0)
+		    .setTol(1e-6)
+		    .setFitIntercept(true)
 	}
 
 	val labelConverter: IndexToString = {
@@ -130,7 +141,7 @@ trait Workspace {
 	val pipeline: Pipeline = new Pipeline()
 	    .setStages(Array(
 			assembler,
-			featureIndexer,
+//			featureIndexer,
 			labelIndexer,
 			lr,
 			labelConverter
@@ -141,28 +152,23 @@ trait Workspace {
 
 	val predictions: DataFrame = model.transform(testing)
 
-	val evaluator: BinaryClassificationEvaluator = new BinaryClassificationEvaluator()
-		.setLabelCol("indexedLabel")
+	val evaluator: RegressionEvaluator = {
+		new RegressionEvaluator()
+			.setMetricName("rmse")
+			.setLabelCol("indexedLabel")
+		    .setPredictionCol("prediction")
+	}
 
 	val accuracy: Double = evaluator.evaluate(predictions)
 
-	println(s"accuracy: $accuracy")
-
-
-
-
-
+	println(s" Chris accuracy: $accuracy")
 
 
 	// dump to sql
-	predictions.coalesce(1)
-		.select(asDBCompatible(predictions.schema.fields) :_*)
-//		.drop("features", "indexedFeatures", "rawPrediction", "probability")
-//		.withColumn("testArray", array(lit(1), lit(2), lit(3)))
+	asDBCompatible(predictions)
 		.write
 		.mode(SaveMode.Overwrite)
 		.jdbc("jdbc:postgresql://localhost/workspace?user=postgres&password=password", "predictions", new Properties)
-//		.jdbc("jdbc:sqlite:x.db", "predictions", new Properties)
 
 	spark.stop()
 
@@ -172,15 +178,33 @@ trait Workspace {
 object Workspace {
 
 
-	def asDBCompatible(cols: Seq[StructField]): Seq[Column] = {
+	def asDBCompatible(df: DataFrame): DataFrame = {
 		val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
-		/*
+
+		val dbCompatibleColumns: Seq[Column] = {
+			/*
 			converting vectors to array
 				- build select list by..
 				- go over all cols in schema
 				- if vector, do vec2arr
 				- else pass through
-	 	*/
+	 		*/
+			df.schema.fields.map{
+				case StructField(name, dataType, _, _) ⇒ dataType match {
+					case t if t.typeName == "vector" ⇒
+						vec2arr(col(name)) as name
+					case other ⇒
+						col(name) as name
+				}
+			}
+		}
+		df.select(dbCompatibleColumns: _*)
+	}
+
+
+	def asDBCompatibleOld(cols: Seq[StructField]): Seq[Column] = {
+		val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
+
 		cols.map{
 			case StructField(name, dataType, _, _) ⇒ dataType match {
 				case t if t.typeName == "vector" ⇒
