@@ -26,6 +26,8 @@ libraryDependencies ++= Seq(
 //	"org.apache.spark" %% "spark-hive-thriftserver" % "2.0.1" % Provided,
 	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
 
+	"com.github.fommil.netlib" % "netlib-native_system-win-x86_64" % "1.1",
+
 	"org.xerial" % "sqlite-jdbc" % "3.14.2.1",
 	"org.postgresql" % "postgresql" % "9.4.1211.jre7",
 

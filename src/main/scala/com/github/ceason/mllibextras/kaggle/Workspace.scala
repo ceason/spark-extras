@@ -2,16 +2,17 @@ package com.github.ceason.mllibextras.kaggle
 
 import java.util.Properties
 
-import org.apache.spark.ml.{Pipeline, PipelineModel}
-import org.apache.spark.ml.classification.LogisticRegression
-import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, RegressionEvaluator}
+import com.github.ceason.mllibextras.LogLossEvaluator
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.classification.{LogisticRegression, RandomForestClassifier}
 import org.apache.spark.ml.feature._
-import org.apache.spark.ml.linalg.DenseVector
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructField
 import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
+import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
 
 /**
   *
@@ -24,33 +25,37 @@ trait Workspace {
 	val spark: SparkSession = SparkSession
 		.builder
 		.appName("kaggle")
-		.master("local[*]")
+		.master("local[6]")
 		.getOrCreate()
 
 	val featureExprs: Map[String, Column] = Map(
-		"male"		→ expr("cast(if(sex=1,1,0) as double)"),
-//		"sex"       → expr("coalesce(cast(sex       as double), 0.0)"),
+		"sex"       → expr("coalesce(cast(sex       as double), 0.0)"),
 		"education" → expr("coalesce(cast(education as double), 0.0)"),
 		"marriage"  → expr("coalesce(cast(marriage  as double), 0.0)"),
 		"age"       → expr("coalesce(cast(age       as double), 0.0)"),
+		"age_group" → expr("cast((case " +
+						   "when age > 62 then 1 " +
+						   "when age > 30 then 2 " +
+						   "else 0 " +
+						   "end) as double)"),
 		"pay_1"     → expr("coalesce(cast(pay_1     as double), 0.0)"),
-//		"pay_2"     → expr("coalesce(cast(pay_2     as double), 0.0)"),
-//		"pay_3"     → expr("coalesce(cast(pay_3     as double), 0.0)"),
-//		"pay_4"     → expr("coalesce(cast(pay_4     as double), 0.0)"),
-//		"pay_5"     → expr("coalesce(cast(pay_5     as double), 0.0)"),
-//		"pay_6"     → expr("coalesce(cast(pay_6     as double), 0.0)"),
-//		"bill_amt1" → expr("coalesce(cast(bill_amt1 as double), 0.0)"),
-//		"bill_amt2" → expr("coalesce(cast(bill_amt2 as double), 0.0)"),
-//		"bill_amt3" → expr("coalesce(cast(bill_amt3 as double), 0.0)"),
-//		"bill_amt4" → expr("coalesce(cast(bill_amt4 as double), 0.0)"),
-//		"bill_amt5" → expr("coalesce(cast(bill_amt5 as double), 0.0)"),
-//		"bill_amt6" → expr("coalesce(cast(bill_amt6 as double), 0.0)"),
-//		"pay_amt1"  → expr("coalesce(cast(pay_amt1  as double), 0.0)"),
-//		"pay_amt2"  → expr("coalesce(cast(pay_amt2  as double), 0.0)"),
-//		"pay_amt3"  → expr("coalesce(cast(pay_amt3  as double), 0.0)"),
-//		"pay_amt4"  → expr("coalesce(cast(pay_amt4  as double), 0.0)"),
-//		"pay_amt5"  → expr("coalesce(cast(pay_amt5  as double), 0.0)"),
-//		"pay_amt6"  → expr("coalesce(cast(pay_amt6  as double), 0.0)"),
+		"pay_2"     → expr("coalesce(cast(pay_2     as double), 0.0)"),
+		"pay_3"     → expr("coalesce(cast(pay_3     as double), 0.0)"),
+		"pay_4"     → expr("coalesce(cast(pay_4     as double), 0.0)"),
+		"pay_5"     → expr("coalesce(cast(pay_5     as double), 0.0)"),
+		"pay_6"     → expr("coalesce(cast(pay_6     as double), 0.0)"),
+		"bill_amt1" → expr("coalesce(cast(bill_amt1 as double), 0.0)"),
+		"bill_amt2" → expr("coalesce(cast(bill_amt2 as double), 0.0)"),
+		"bill_amt3" → expr("coalesce(cast(bill_amt3 as double), 0.0)"),
+		"bill_amt4" → expr("coalesce(cast(bill_amt4 as double), 0.0)"),
+		"bill_amt5" → expr("coalesce(cast(bill_amt5 as double), 0.0)"),
+		"bill_amt6" → expr("coalesce(cast(bill_amt6 as double), 0.0)"),
+		"pay_amt1"  → expr("coalesce(cast(pay_amt1  as double), 0.0)"),
+		"pay_amt2"  → expr("coalesce(cast(pay_amt2  as double), 0.0)"),
+		"pay_amt3"  → expr("coalesce(cast(pay_amt3  as double), 0.0)"),
+		"pay_amt4"  → expr("coalesce(cast(pay_amt4  as double), 0.0)"),
+		"pay_amt5"  → expr("coalesce(cast(pay_amt5  as double), 0.0)"),
+		"pay_amt6"  → expr("coalesce(cast(pay_amt6  as double), 0.0)"),
 		"limit_bal" → expr("coalesce(cast(limit_bal as double), 0.0)")
 	)
 
@@ -74,8 +79,8 @@ trait Workspace {
 			(col("default_oct") as 'label)
 		}
 
-		raw.select(cols :_*)
-	}
+		raw.select(cols :_*).repartition(4)
+	}.cache
 
 	val trainPct: Double = 0.8
 
@@ -90,7 +95,7 @@ trait Workspace {
 			.option("header", true)
 			.option("inferSchema", true)
 			.csv("src/main/resources/test.csv")
-			.select(inputColExpr :_*)
+			.select(col("customer_id") +: inputColExpr :_*)
 	}
 
 
@@ -101,13 +106,28 @@ trait Workspace {
 	}
 
 
-	val featureIndexer: VectorIndexerModel = {
+	val featureIndexer = {
 		new VectorIndexer()
 			.setInputCol("features")
 			.setOutputCol("indexedFeatures")
 			.setMaxCategories(4)
-			.fit(assembler.transform(data))
 	}
+
+	val selector: ChiSqSelector = {
+		new ChiSqSelector()
+			.setNumTopFeatures(22)
+			.setFeaturesCol("indexedFeatures")
+			.setLabelCol("indexedLabel")
+			.setOutputCol("selectedFeatures")
+	}
+
+	val pca: PCA = {
+		new PCA()
+			.setInputCol("indexedFeatures")
+			.setOutputCol("selectedFeatures")
+			.setK(15)
+	}
+
 
 
 	val labelIndexer: StringIndexerModel = {
@@ -120,8 +140,8 @@ trait Workspace {
 
 	val lr: LogisticRegression = {
 		new LogisticRegression()
-//			.setFeaturesCol("indexedFeatures")
-			.setFeaturesCol("features")
+			.setFeaturesCol("selectedFeatures")
+//			.setFeaturesCol("features")
 			.setLabelCol("indexedLabel")
 			.setPredictionCol("prediction")
 			.setMaxIter(100)
@@ -131,6 +151,14 @@ trait Workspace {
 		    .setFitIntercept(true)
 	}
 
+	val rf: RandomForestClassifier = {
+		new RandomForestClassifier()
+			.setSeed(12345)
+			.setFeaturesCol("selectedFeatures")
+			.setLabelCol("indexedLabel")
+			.setPredictionCol("prediction")
+	}
+
 	val labelConverter: IndexToString = {
 		new IndexToString()
 			.setInputCol("prediction")
@@ -138,30 +166,100 @@ trait Workspace {
 			.setLabels(labelIndexer.labels)
 	}
 
+	spark.udf.register("vec2arr", (x: MLVector) ⇒ x.toArray)
+
+	val st: SQLTransformer = {
+		new SQLTransformer()
+			.setStatement("select *, vec2arr(probability)[1] as prob from __THIS__")
+	}
+
 	val pipeline: Pipeline = new Pipeline()
 	    .setStages(Array(
 			assembler,
-//			featureIndexer,
+			featureIndexer,
 			labelIndexer,
-			lr,
-			labelConverter
+			selector,
+//			pca,
+			rf, // 0.3917766448774857,
+//			lr, // 0.4662163397557657
+			labelConverter,
+			st
 		))
 
-	val model: PipelineModel = pipeline.fit(training)
 
-
-	val predictions: DataFrame = model.transform(testing)
-
-	val evaluator: RegressionEvaluator = {
-		new RegressionEvaluator()
-			.setMetricName("rmse")
-			.setLabelCol("indexedLabel")
-		    .setPredictionCol("prediction")
+	val rfParamGrid: Array[ParamMap] = {
+		new ParamGridBuilder()
+			.addGrid(rf.numTrees, 15 to 75 by 15)
+			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
+			.addGrid(rf.impurity, Seq("entropy", "gini"))
+			.addGrid(rf.maxDepth, 3 to 9 by 2)
+			.build()
 	}
+
+	val lrParamGrid: Array[ParamMap] = {
+		new ParamGridBuilder()
+			.addGrid(lr.regParam, 0.0 to 0.5 by 0.05)
+			.build()
+	}
+
+	val evaluator: LogLossEvaluator = {
+		new LogLossEvaluator()
+			.setLabelCol("indexedLabel")
+			.setProbabilityCol("prob")
+	}
+
+	val cv: CrossValidator = {
+		new CrossValidator()
+			.setEstimator(pipeline)
+			.setEvaluator(evaluator)
+			.setEstimatorParamMaps(rfParamGrid)
+//			.setEstimatorParamMaps(lrParamGrid)
+			.setNumFolds(3)
+			.setSeed(12345)
+	}
+
+
+
+	val begin = System.currentTimeMillis()
+
+	val model: CrossValidatorModel = {
+		cv.fit(data) // 0.389063931892257 639s, 563s
+
+	}
+	//	val model: PipelineModel = pipeline.fit(training) // 0.43864579472730203
+
+	val duration = (System.currentTimeMillis() - begin) / 1000
+	println(s"Total duration: $duration seconds")
+
+
+
+
+
+
+	val predictions: DataFrame = model
+		.transform(data) // 0.3954236128538358
+
+
 
 	val accuracy: Double = evaluator.evaluate(predictions)
 
+	val pctCorrect: Double = {
+		1.0 * predictions.filter("indexedLabel = prediction").count() / predictions.count()
+	}
+
+	println(s"      % correct: $pctCorrect")
 	println(s" Chris accuracy: $accuracy")
+
+	val unlabeledPredictions: DataFrame = {
+		model
+			.transform(unlabeledData)
+			.select("customer_id", "prob")
+		    .withColumn("log_loss", lit(accuracy))
+	}
+
+	asDBCompatible(unlabeledPredictions).write
+		.mode(SaveMode.Append)
+		.jdbc("jdbc:postgresql://localhost/workspace?user=postgres&password=password", "unlabeled_predictions", new Properties)
 
 
 	// dump to sql
@@ -172,14 +270,28 @@ trait Workspace {
 
 	spark.stop()
 
+
+
 }
 
 
 object Workspace {
 
 
+	def time[R](f: ⇒ R): R ={
+		val begin = System.currentTimeMillis()
+		val ret = f
+		val duration = (System.currentTimeMillis() - begin) / 1000
+		println(s"Total duration: $duration seconds")
+		ret
+	}
+
+	val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
+
+
+	val vec: UserDefinedFunction = udf{ (i: Int, v: MLVector) ⇒ v(i) }
+
 	def asDBCompatible(df: DataFrame): DataFrame = {
-		val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
 
 		val dbCompatibleColumns: Seq[Column] = {
 			/*
