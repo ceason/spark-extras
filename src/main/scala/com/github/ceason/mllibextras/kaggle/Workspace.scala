@@ -4,7 +4,7 @@ import java.util.Properties
 
 import com.github.ceason.mllibextras.LogLossEvaluator
 import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.classification.{LogisticRegression, RandomForestClassifier}
+import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.feature._
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
@@ -17,16 +17,16 @@ import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGri
 /**
   *
   */
-//noinspection TypeAnnotation
 trait Workspace {
 	import Workspace._
 
-
-	val spark: SparkSession = SparkSession
-		.builder
-		.appName("kaggle")
-		.master("local[6]")
-		.getOrCreate()
+	val spark: SparkSession = {
+		SparkSession
+			.builder
+			.appName("kaggle")
+			.master("local[6]")
+			.getOrCreate()
+	}
 
 	val featureExprs: Map[String, Column] = Map(
 		"sex"       → expr("coalesce(cast(sex       as double), 0.0)"),
@@ -61,10 +61,8 @@ trait Workspace {
 
 	val featureCols: Array[String] = featureExprs.keys.toArray
 
-
 	val inputColExpr: Seq[Column] = featureExprs.toSeq.map{case (name, ex) ⇒ ex.as(name)}
 
-	// $example on$
 	// Load training data
 	val data: DataFrame = {
 		val raw = spark.read
@@ -79,15 +77,8 @@ trait Workspace {
 			(col("default_oct") as 'label)
 		}
 
-		raw.select(cols :_*).repartition(4)
-	}.cache
-
-	val trainPct: Double = 0.8
-
-	val Array(training: DataFrame, testing: DataFrame) = {
-		data.randomSplit(Array(trainPct, 1-trainPct), 12345)
+		raw.select(cols :_*).repartition(4).cache
 	}
-
 
 	val unlabeledData: DataFrame = {
 		spark.read
@@ -98,15 +89,13 @@ trait Workspace {
 			.select(col("customer_id") +: inputColExpr :_*)
 	}
 
-
 	val assembler: VectorAssembler = {
 		new VectorAssembler()
 			.setInputCols(featureCols)
 			.setOutputCol("features")
 	}
 
-
-	val featureIndexer = {
+	val featureIndexer: VectorIndexer = {
 		new VectorIndexer()
 			.setInputCol("features")
 			.setOutputCol("indexedFeatures")
@@ -121,34 +110,11 @@ trait Workspace {
 			.setOutputCol("selectedFeatures")
 	}
 
-	val pca: PCA = {
-		new PCA()
-			.setInputCol("indexedFeatures")
-			.setOutputCol("selectedFeatures")
-			.setK(15)
-	}
-
-
-
 	val labelIndexer: StringIndexerModel = {
 		new StringIndexer()
 			.setInputCol("label")
 			.setOutputCol("indexedLabel")
 			.fit(data)
-	}
-
-
-	val lr: LogisticRegression = {
-		new LogisticRegression()
-			.setFeaturesCol("selectedFeatures")
-//			.setFeaturesCol("features")
-			.setLabelCol("indexedLabel")
-			.setPredictionCol("prediction")
-			.setMaxIter(100)
-			.setRegParam(0.0)
-			.setElasticNetParam(0.0)
-		    .setTol(1e-6)
-		    .setFitIntercept(true)
 	}
 
 	val rf: RandomForestClassifier = {
@@ -173,19 +139,18 @@ trait Workspace {
 			.setStatement("select *, vec2arr(probability)[1] as prob from __THIS__")
 	}
 
-	val pipeline: Pipeline = new Pipeline()
-	    .setStages(Array(
-			assembler,
-			featureIndexer,
-			labelIndexer,
-			selector,
-//			pca,
-			rf, // 0.3917766448774857,
-//			lr, // 0.4662163397557657
-			labelConverter,
-			st
-		))
-
+	val pipeline: Pipeline = {
+		new Pipeline()
+			.setStages(Array(
+				assembler,
+				featureIndexer,
+				labelIndexer,
+				selector,
+				rf,
+				labelConverter,
+				st
+			))
+	}
 
 	val rfParamGrid: Array[ParamMap] = {
 		new ParamGridBuilder()
@@ -193,12 +158,6 @@ trait Workspace {
 			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
 			.addGrid(rf.impurity, Seq("entropy", "gini"))
 			.addGrid(rf.maxDepth, 3 to 9 by 2)
-			.build()
-	}
-
-	val lrParamGrid: Array[ParamMap] = {
-		new ParamGridBuilder()
-			.addGrid(lr.regParam, 0.0 to 0.5 by 0.05)
 			.build()
 	}
 
@@ -213,33 +172,13 @@ trait Workspace {
 			.setEstimator(pipeline)
 			.setEvaluator(evaluator)
 			.setEstimatorParamMaps(rfParamGrid)
-//			.setEstimatorParamMaps(lrParamGrid)
 			.setNumFolds(3)
 			.setSeed(12345)
 	}
 
+	val model: CrossValidatorModel = cv.fit(data)
 
-
-	val begin = System.currentTimeMillis()
-
-	val model: CrossValidatorModel = {
-		cv.fit(data) // 0.389063931892257 639s, 563s
-
-	}
-	//	val model: PipelineModel = pipeline.fit(training) // 0.43864579472730203
-
-	val duration = (System.currentTimeMillis() - begin) / 1000
-	println(s"Total duration: $duration seconds")
-
-
-
-
-
-
-	val predictions: DataFrame = model
-		.transform(data) // 0.3954236128538358
-
-
+	val predictions: DataFrame = model.transform(data)
 
 	val accuracy: Double = evaluator.evaluate(predictions)
 
@@ -251,45 +190,32 @@ trait Workspace {
 	println(s" Chris accuracy: $accuracy")
 
 	val unlabeledPredictions: DataFrame = {
+		val ts = System.currentTimeMillis()
 		model
 			.transform(unlabeledData)
 			.select("customer_id", "prob")
-		    .withColumn("log_loss", lit(accuracy))
+			.withColumn("log_loss", lit(accuracy))
+			.withColumn("tstamp", lit(ts))
 	}
 
-	asDBCompatible(unlabeledPredictions).write
-		.mode(SaveMode.Append)
-		.jdbc("jdbc:postgresql://localhost/workspace?user=postgres&password=password", "unlabeled_predictions", new Properties)
-
-
 	// dump to sql
+	val localSql = "jdbc:postgresql://localhost/workspace?user=postgres&password=password"
+	asDBCompatible(unlabeledPredictions)
+		.write.mode(SaveMode.Append)
+		.jdbc(localSql, "unlabeled_predictions", new Properties)
+
 	asDBCompatible(predictions)
-		.write
-		.mode(SaveMode.Overwrite)
-		.jdbc("jdbc:postgresql://localhost/workspace?user=postgres&password=password", "predictions", new Properties)
+		.write.mode(SaveMode.Overwrite)
+		.jdbc(localSql, "predictions", new Properties)
 
 	spark.stop()
-
-
 
 }
 
 
 object Workspace {
 
-
-	def time[R](f: ⇒ R): R ={
-		val begin = System.currentTimeMillis()
-		val ret = f
-		val duration = (System.currentTimeMillis() - begin) / 1000
-		println(s"Total duration: $duration seconds")
-		ret
-	}
-
 	val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
-
-
-	val vec: UserDefinedFunction = udf{ (i: Int, v: MLVector) ⇒ v(i) }
 
 	def asDBCompatible(df: DataFrame): DataFrame = {
 
@@ -313,17 +239,4 @@ object Workspace {
 		df.select(dbCompatibleColumns: _*)
 	}
 
-
-	def asDBCompatibleOld(cols: Seq[StructField]): Seq[Column] = {
-		val vec2arr: UserDefinedFunction = udf{ x: MLVector ⇒ x.toArray }
-
-		cols.map{
-			case StructField(name, dataType, _, _) ⇒ dataType match {
-				case t if t.typeName == "vector" ⇒
-					vec2arr(col(name)) as name
-				case other ⇒
-					col(name) as name
-			}
-		}
-	}
 }
