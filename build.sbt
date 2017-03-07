@@ -22,9 +22,9 @@ libraryDependencies ++= Seq(
 //	"com.github.nscala-time" %% "nscala-time" % "2.14.0",
 
 	// spark
-//		"org.apache.spark" %% "spark-core"  % "2.0.1" % Provided,
-//	"org.apache.spark" %% "spark-hive-thriftserver" % "2.0.1" % Provided,
-	"org.apache.spark" %% "spark-mllib"             % "2.0.1", // % Provided,
+//		"org.apache.spark" %% "spark-core"  % "2.1.0" % Provided,
+//	"org.apache.spark" %% "spark-hive-thriftserver" % "2.1.0" % Provided,
+	"org.apache.spark" %% "spark-mllib"             % "2.1.0", // % Provided,
 
 	"com.github.fommil.netlib" % "netlib-native_system-win-x86_64" % "1.1",
 
@@ -41,7 +41,7 @@ libraryDependencies ++= Seq(
 
 
 	// test deps
-	"org.apache.spark" %% "spark-mllib" % "2.0.1" % Test,
+	"org.apache.spark" %% "spark-mllib" % "2.1.0" % Test,
 	"org.scalatest"    %% "scalatest"   % "2.2.5" % Test
 )
 

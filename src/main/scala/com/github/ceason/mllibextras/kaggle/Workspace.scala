@@ -84,11 +84,6 @@ trait Workspace {
 
 	val trainPct: Double = 0.8
 
-	val Array(training: DataFrame, testing: DataFrame) = {
-		data.randomSplit(Array(trainPct, 1-trainPct), 12345)
-	}
-
-
 	val unlabeledData: DataFrame = {
 		spark.read
 			.option("nullValue", "NA")
@@ -127,8 +122,6 @@ trait Workspace {
 			.setOutputCol("selectedFeatures")
 			.setK(15)
 	}
-
-
 
 	val labelIndexer: StringIndexerModel = {
 		new StringIndexer()
