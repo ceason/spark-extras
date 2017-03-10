@@ -1,6 +1,7 @@
 package com.github.ceason.mllibextras.kaggle
 
 import com.github.ceason.mllibextras.{LocalSpark, LogLossEvaluator}
+import org.apache.spark.ml.PipelineStage
 import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
@@ -40,6 +41,21 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 		.csv("src/main/resources/test.csv")
 		.cache()
 
+	val evaluatorCol = "evalcol"
+	val evaluator: LogLossEvaluator = new LogLossEvaluator()
+		.setLabelCol(labelCol)
+		.setProbabilityCol(evaluatorCol)
+
+	val recipeTemplate: (String, ParamGridBuilder, Seq[PipelineStage]) ⇒ KaggleRecipe = {
+		KaggleRecipe(
+			labeledData = trainData,
+			unlabeledData = testData,
+			labelCol = labelCol,
+			predictionCol = evaluatorCol,
+			evaluator = evaluator,
+			numFolds = 3,
+			_, _, _)
+	}
 
 	// here is where custom stuff would go (different models, pipeline steps etc)
 
@@ -52,24 +68,13 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 		.setLabelCol(labelCol)
 		.setPredictionCol("prediction")
 
-	val recipe1: KaggleRecipe = KaggleRecipe(
-		labeledData = trainData,
-		unlabeledData = testData,
-		labelCol = labelCol,
-		predictionCol = "prob",
-		evaluator = new LogLossEvaluator()
-			.setLabelCol(labelCol)
-			.setProbabilityCol("prob"),
-		numFolds = 3,
-		paramGridBuilder = new ParamGridBuilder()
+	val recipe1: KaggleRecipe = recipeTemplate("someTestRecipe",
+		new ParamGridBuilder()
 			.addGrid(rf.numTrees, 15 to 75 by 15)
 			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
 			.addGrid(rf.maxDepth, 3 to 9 by 2)
 			.addGrid(rf.impurity, Seq("entropy", "gini")),
-
-		recipeName = "someTestRecipe",
-
-		transformers = List(
+		List(
 			new SQLTransformer().setStatement(
 				s"""select
 	   				customer_id,
@@ -111,14 +116,15 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 				.setOutputCol("selectedFeatures"),
 			rf,
 			new SQLTransformer()
-				.setStatement("select *, vec2arr(probability)[1] as prob from __THIS__")
-		)
+				.setStatement(s"select *, vec2arr(probability)[1] as $evaluatorCol from __THIS__")
+		))
 
-	)
+	val start = System.currentTimeMillis
 
 	//	recipe1.transformedData.printSchema()
 	//	recipe1.transformedData.show()
 	recipe1.writeCsv()
 
-
+	val duration = (System.currentTimeMillis - start) / 1000d
+	println(s"Total time seconds: $duration")
 }

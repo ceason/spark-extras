@@ -29,9 +29,9 @@ case class KaggleRecipe(
 	evaluator: Evaluator,
 	numFolds: Int = 3,
 //	estimator: PipelineStage,
+	recipeName: String,
 	paramGridBuilder: ParamGridBuilder,
-	transformers: Seq[PipelineStage],
-	recipeName: String
+	transformers: Seq[PipelineStage]
 ) {
 
 
