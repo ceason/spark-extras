@@ -3,6 +3,7 @@ package com.github.ceason.mllibextras.kaggle
 import com.github.ceason.mllibextras.{LocalSpark, LogLossEvaluator}
 import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.feature._
+import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
 import org.apache.spark.ml.tuning.ParamGridBuilder
 import org.apache.spark.sql.DataFrame
 import org.scalatest.FlatSpec
@@ -17,13 +18,20 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 
 	val totallyRandomSeed = 4
 
-	val labelCol = "default_oct"
+	val labelCol = "default_oct_probability"
 
-	val trainData: DataFrame = spark.read
-		.option("nullValue", "NA")
-		.option("header", "true")
-		.option("inferSchema", true)
-		.csv("src/main/resources/train.csv")
+	val trainData: DataFrame = {
+		val d = spark.read
+			.option("nullValue", "NA")
+			.option("header", "true")
+			.option("inferSchema", true)
+			.csv("src/main/resources/train.csv")
+		new StringIndexer()
+			.setInputCol("default_oct")
+			.setOutputCol(labelCol)
+			.fit(d)
+			.transform(d)
+	}.cache()
 
 	val testData: DataFrame = spark.read
 		.option("nullValue", "NA")
@@ -34,33 +42,35 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 
 	// here is where custom stuff would go (different models, pipeline steps etc)
 
+
+	spark.udf.register("vec2arr", (x: MLVector) ⇒ x.toArray)
+
 	val rf: RandomForestClassifier = new RandomForestClassifier()
 		.setSeed(totallyRandomSeed)
 		.setFeaturesCol("selectedFeatures")
-		.setLabelCol("indexedLabel")
+		.setLabelCol(labelCol)
 		.setPredictionCol("prediction")
 
 	val recipe1: KaggleRecipe = KaggleRecipe(
 		labeledData = trainData,
 		unlabeledData = testData,
 		labelCol = labelCol,
-		predictionCol = "predict_default_oct",
+		predictionCol = "prob",
 		evaluator = new LogLossEvaluator()
-			.setLabelCol("default_oct")
-			.setProbabilityCol("predict_default_oct"),
-		numFolds = 2,
-		estimator = rf,
+			.setLabelCol(labelCol)
+			.setProbabilityCol("prob"),
+		numFolds = 3,
 		paramGridBuilder = new ParamGridBuilder()
 			.addGrid(rf.numTrees, 15 to 75 by 15)
 			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
-			.addGrid(rf.impurity, Seq("entropy", "gini"))
-			.addGrid(rf.maxDepth, 3 to 9 by 2),
+			.addGrid(rf.maxDepth, 3 to 9 by 2)
+			.addGrid(rf.impurity, Seq("entropy", "gini")),
 
 		recipeName = "someTestRecipe",
 
 		transformers = List(
 			new SQLTransformer().setStatement(
-				"""select
+				s"""select
 	   				customer_id,
 					coalesce(cast(pay_1     as double), 0.0) as pay_1,
 					coalesce(cast(pay_2     as double), 0.0) as pay_2,
@@ -81,7 +91,7 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 					coalesce(cast(pay_amt5  as double), 0.0) as pay_amt5,
 					coalesce(cast(pay_amt6  as double), 0.0) as pay_amt6,
 					coalesce(cast(limit_bal as double), 0.0) as limit_bal,
-	 				default_oct
+	 				$labelCol
 			 	from __THIS__"""),
 			new VectorAssembler()
 				.setInputCols(Array("pay_1", "pay_2", "pay_3", "pay_4", "pay_5", "pay_6",
@@ -93,22 +103,21 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 				.setInputCol("features")
 				.setOutputCol("indexedFeatures")
 				.setMaxCategories(4),
-			new StringIndexer()
-				.setInputCol("default_oct")
-				.setOutputCol("indexedLabel")
-				.fit(trainData),
 			new ChiSqSelector()
 				.setNumTopFeatures(22)
 				.setFeaturesCol("indexedFeatures")
-				.setLabelCol("indexedLabel")
-				.setOutputCol("selectedFeatures")
+				.setLabelCol(labelCol)
+				.setOutputCol("selectedFeatures"),
+			rf,
+			new SQLTransformer()
+				.setStatement("select *, vec2arr(probability)[1] as prob from __THIS__")
 		)
 
 	)
 
-//	recipe1.transformedData.printSchema()
-	recipe1.transformedData.show()
-//	recipe1.writeCsv()
+	//	recipe1.transformedData.printSchema()
+	//	recipe1.transformedData.show()
+	recipe1.writeCsv()
 
 
 }

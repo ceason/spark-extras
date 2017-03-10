@@ -17,7 +17,7 @@ import org.apache.spark.sql.functions._
   * @param unlabeledData    what we submit to be scored
   * @param labelCol         aka the column that's not in the unlabeled dataset ;)
   * @param evaluator        metric for model fitness (eg rmse, logloss, etc)
-  * @param estimator        AKA the model to train (eg random forest, svm, etc)
+//  * @param estimator        AKA the model to train (eg random forest, svm, etc)
   * @param paramGridBuilder hyperparameters we'll gridsearch over
   * @param transformers     sequence of data transformations to apply before training model
   */
@@ -28,7 +28,7 @@ case class KaggleRecipe(
 	predictionCol: String,
 	evaluator: Evaluator,
 	numFolds: Int = 3,
-	estimator: PipelineStage,
+//	estimator: PipelineStage,
 	paramGridBuilder: ParamGridBuilder,
 	transformers: Seq[PipelineStage],
 	recipeName: String
@@ -46,7 +46,8 @@ case class KaggleRecipe(
 
 	lazy val trainedModel: CrossValidatorModel = {
 		val pipeline = new ParallelPipeline()
-			.setStages(transformers.toArray :+ estimator)
+			.setStages(transformers.toArray)
+//			.setStages(transformers.toArray :+ estimator)
 
 		val cv = new CrossValidator()
 			.setEstimator(pipeline)
@@ -59,7 +60,7 @@ case class KaggleRecipe(
 	}
 
 	lazy val accuracy: Double = {
-		val predictions = trainedModel.transform(labeledData)
+		val predictions = trainedModel.transform(labeledData).cache()
 		evaluator.evaluate(predictions)
 	}
 
@@ -69,13 +70,19 @@ case class KaggleRecipe(
 	  */
 	lazy val unlabeledPredictions: DataFrame = {
 		val ts = System.currentTimeMillis
-		val scoredUnlabeled = trainedModel.transform(unlabeledData)
+		val scoredUnlabeled = trainedModel
+			.transform(unlabeledData.withColumn(labelCol, expr("0.0")))
+			.drop(labelCol)
 		// rename the predicted label col to the label col and drop all cols not present in
 		// the original dataset (aka make the unlabeled dataset look like the labeled dataset)
-		val srcCols = labeledData.schema.fields.map(f ⇒ col(f.name))
+		val srcCols = labeledData.schema.fields.map(_.name)
+		val tgtCols = scoredUnlabeled.schema.fields.map(_.name) :+ labelCol
+		val outCols = srcCols
+			.filter(tgtCols.contains)
+			.map(col)
 		val conformed = scoredUnlabeled
 			.withColumnRenamed(predictionCol, labelCol)
-			.select(srcCols: _*)
+			.select(outCols.toSeq: _*)
 		conformed
 	}.cache()
 
@@ -95,7 +102,8 @@ case class KaggleRecipe(
 	  */
 	def writeCsv(prefix: Option[String] = None): Unit = {
 		val df = new SimpleDateFormat("y-MMMd-hmma")
-		val fileName = f"${recipeName}_$accuracy%10.5f_${df.format(new Date())}"
+		val accStr = f"${accuracy.toFloat}%9.5f".trim
+		val fileName = f"${recipeName}_${accStr}_${df.format(new Date())}"
 
 		val outputPath = prefix
 			.map(_ + s"/$fileName")
