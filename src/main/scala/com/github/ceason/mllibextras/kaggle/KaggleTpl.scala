@@ -1,6 +1,14 @@
 package com.github.ceason.mllibextras.kaggle
 
-import scala.collection.JavaConverters._
+import java.text.SimpleDateFormat
+import java.util.Date
+
+import com.github.ceason.mllibextras.ParallelPipeline
+import org.apache.spark.ml.evaluation.Evaluator
+import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
+import org.apache.spark.ml.{Pipeline, PipelineStage}
+import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.functions._
 
 /**
   *
@@ -37,9 +45,17 @@ trait KaggleTpl {
 			- parallelize crossvalidator by..
 				- extending and overriding 'fit' ?
 				- ^ acutally, it's the estimator that needs to be parallelized
-
-
-
 	 */
 
+	/*
+
+		right now goals:
+			- define/swap different pipelines easily
+			- print "post transform dataset"
+			- save scored-unlabeled dataset to file per above convention
+	 */
+
+
 }
+
+
