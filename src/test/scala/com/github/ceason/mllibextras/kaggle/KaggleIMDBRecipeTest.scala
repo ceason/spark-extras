@@ -1,15 +1,13 @@
 package com.github.ceason.mllibextras.kaggle
 
-import com.github.ceason.mllibextras.{LocalSpark, LogLossEvaluator}
+import com.github.ceason.mllibextras.LocalSpark
 import org.apache.spark.ml.PipelineStage
-import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.{Vector ⇒ MLVector}
+import org.apache.spark.ml.regression.{DecisionTreeRegressor, RandomForestRegressor}
 import org.apache.spark.ml.tuning.ParamGridBuilder
-import org.apache.spark.mllib.evaluation.RegressionMetrics
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions._
 import org.scalatest.FlatSpec
 
 /**
@@ -22,7 +20,7 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 
 	val totallyRandomSeed = 4
 
-	val labelCol = "imdb_score_x10"
+	val labelCol = "imdb_score"
 
 	val trainData: DataFrame = {
 		spark.read
@@ -31,7 +29,6 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 			.option("inferSchema", true)
 			.csv("src/main/resources/imdb_train_public.csv")
 			.na.fill(0)
-			.withColumn(labelCol, expr("imdb_score * 10")) // make it a whole number
 	}.cache()
 
 	//	trainData.printSchema()
@@ -66,11 +63,15 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 
 	spark.udf.register("vec2arr", (x: MLVector) ⇒ x.toArray)
 
-	val rf: RandomForestClassifier = new RandomForestClassifier()
+	val rf: RandomForestRegressor = new RandomForestRegressor()
 		.setSeed(totallyRandomSeed)
 		.setFeaturesCol("selectedFeatures")
 		.setLabelCol(labelCol)
 		.setPredictionCol(evaluatorCol)
+
+	val dt = new DecisionTreeRegressor()
+		.setLabelCol(labelCol)
+		.setFeaturesCol("indexedFeatures")
 
 	val numericCols: List[String] = List("actor_1_facebook_likes",
 		"actor_2_facebook_likes",
@@ -101,12 +102,11 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		"movie_title",
 		"plot_keywords")
 
-	val recipe1: KaggleRecipe = recipeTemplate("imdb_rf",
+	val recipe1: KaggleRecipe = recipeTemplate("imdb_rfr",
 		new ParamGridBuilder()
-			//			.addGrid(rf.numTrees, 15 to 75 by 15)
+			.addGrid(rf.numTrees, 15 to 75 by 15)
 			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
-			//			.addGrid(rf.maxDepth, 3 to 9 by 2)
-			.addGrid(rf.impurity, Seq("entropy", "gini")),
+			.addGrid(rf.maxDepth, 3 to 9 by 3),
 		List(
 			new VectorAssembler()
 				.setInputCols(numericCols.toArray)
