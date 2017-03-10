@@ -29,6 +29,7 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 			.option("inferSchema", true)
 			.csv("src/main/resources/imdb_train_public.csv")
 			.na.fill(0)
+			.na.fill("")
 	}.cache()
 
 	//	trainData.printSchema()
@@ -39,10 +40,11 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		.option("inferSchema", true)
 		.csv("src/main/resources/imdb_test_public.csv")
 		.na.fill(0)
+		.na.fill("")
 		.cache()
 
 	val evaluatorCol = "prediction"
-	val evaluator = new RegressionEvaluator()
+	val evaluator: RegressionEvaluator = new RegressionEvaluator()
 		.setMetricName("rmse")
 		.setPredictionCol(evaluatorCol)
 		.setLabelCol(labelCol)
@@ -68,6 +70,7 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		.setFeaturesCol("selectedFeatures")
 		.setLabelCol(labelCol)
 		.setPredictionCol(evaluatorCol)
+		.setMaxBins(100)
 
 	val dt = new DecisionTreeRegressor()
 		.setLabelCol(labelCol)
@@ -89,23 +92,33 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		"title_year",
 		"aspect_ratio")
 
-	val stringCols: List[String] = List("actor_1_name",
-		"actor_2_name",
-		"actor_3_name",
-		"color",
+	val stringCols: List[String] = List(
+		//		"actor_1_name",
+		//		"actor_2_name",
+		//		"actor_3_name",
+		//		"color",
 		"content_rating",
 		"country",
-		"director_name",
-		"genres",
-		"language",
-		"movie_imdb_link",
-		"movie_title",
-		"plot_keywords")
+		//				"director_name",
+		//		"genres",
+		//		"plot_keywords",
+		//		"movie_imdb_link",
+		//		"movie_title",
+		"language"
+	)
+
+	val strIndexers: List[StringIndexerModel] = stringCols.map { col ⇒
+		new StringIndexer()
+			.setInputCol(col)
+			.setOutputCol(s"idx_$col")
+			.fit(trainData.drop(labelCol) union testData)
+	}
+	val stringColsIndexed: List[String] = stringCols.map(col ⇒ s"idx_$col")
 
 	val recipe1: KaggleRecipe = recipeTemplate("imdb_rfr",
 		new ParamGridBuilder()
-			.addGrid(rf.numTrees, 15 to 75 by 15)
-			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
+			//			.addGrid(rf.numTrees, 15 to 75 by 15)
+			//			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
 			.addGrid(rf.maxDepth, 3 to 9 by 3),
 		List(
 			new VectorAssembler()
@@ -123,11 +136,33 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 			rf
 		))
 
+	val recipe2: KaggleRecipe = recipeTemplate("imdb_rfr",
+		new ParamGridBuilder()
+			.addGrid(rf.numTrees, 15 to 75 by 15)
+			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
+			.addGrid(rf.maxDepth, 3 to 9 by 3),
+		strIndexers ++ List(
+			new VectorAssembler()
+				.setInputCols((numericCols ++ stringColsIndexed).toArray)
+				.setOutputCol("features"),
+			new VectorIndexer()
+				.setInputCol("features")
+				.setOutputCol("indexedFeatures")
+				.setMaxCategories(4),
+			new ChiSqSelector()
+				.setNumTopFeatures(22)
+				.setFeaturesCol("indexedFeatures")
+				.setLabelCol(labelCol)
+				.setOutputCol("selectedFeatures"),
+			rf
+		))
+
 	val start = System.currentTimeMillis
 
-	recipe1.transformedData.printSchema()
-	recipe1.transformedData.show(false)
-	recipe1.writeCsv()
+	//	recipe2.transformedData.printSchema()
+	//	recipe2.transformedData.show()
+	recipe2.trainedModel
+	recipe2.writeCsv("id", "imdb_score as imdb_score_yhat")
 
 	val duration = (System.currentTimeMillis - start) / 1000d
 	println(s"Total time seconds: $duration")

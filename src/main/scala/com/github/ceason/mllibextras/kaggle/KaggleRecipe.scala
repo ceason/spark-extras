@@ -5,7 +5,7 @@ import java.util.Date
 
 import com.github.ceason.mllibextras.ParallelPipeline
 import org.apache.spark.ml.evaluation.Evaluator
-import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParallelCrossValidator, ParamGridBuilder}
+import org.apache.spark.ml.tuning.{CrossValidatorModel, ParallelCrossValidator, ParamGridBuilder}
 import org.apache.spark.ml.{Pipeline, PipelineStage}
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
@@ -17,7 +17,7 @@ import org.apache.spark.sql.functions._
   * @param unlabeledData    what we submit to be scored
   * @param labelCol         aka the column that's not in the unlabeled dataset ;)
   * @param evaluator        metric for model fitness (eg rmse, logloss, etc)
-//  * @param estimator        AKA the model to train (eg random forest, svm, etc)
+  *                         //  * @param estimator        AKA the model to train (eg random forest, svm, etc)
   * @param paramGridBuilder hyperparameters we'll gridsearch over
   * @param transformers     sequence of data transformations to apply before training model
   */
@@ -28,7 +28,7 @@ case class KaggleRecipe(
 	predictionCol: String,
 	evaluator: Evaluator,
 	numFolds: Int = 3,
-//	estimator: PipelineStage,
+	//	estimator: PipelineStage,
 	recipeName: String,
 	paramGridBuilder: ParamGridBuilder,
 	transformers: Seq[PipelineStage]
@@ -47,7 +47,7 @@ case class KaggleRecipe(
 	lazy val trainedModel: CrossValidatorModel = {
 		val pipeline = new ParallelPipeline()
 			.setStages(transformers.toArray)
-//			.setStages(transformers.toArray :+ estimator)
+		//			.setStages(transformers.toArray :+ estimator)
 
 		val cv = new ParallelCrossValidator()
 			.setEstimator(pipeline)
@@ -116,7 +116,20 @@ case class KaggleRecipe(
 			.csv(outputPath)
 	}
 
+	def writeCsv(selectExprs: String*): Unit = {
+		val df = new SimpleDateFormat("y-MMMd-hmma")
+		val accStr = f"${accuracy.toFloat}%9.5f".trim
+		val fileName = f"${recipeName}_${accStr}_${df.format(new Date())}"
 
+		val outputPath = fileName
+
+		unlabeledPredictions
+			.selectExpr(selectExprs: _*)
+			.coalesce(1)
+			.write
+			.option("header", "true")
+			.csv(outputPath)
+	}
 
 
 }
