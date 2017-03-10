@@ -38,6 +38,7 @@ class KaggleRecipeTest extends FlatSpec with LocalSpark {
 		.option("header", "true")
 		.option("inferSchema", true)
 		.csv("src/main/resources/test.csv")
+		.cache()
 
 
 	// here is where custom stuff would go (different models, pipeline steps etc)

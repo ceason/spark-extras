@@ -5,7 +5,7 @@ import java.util.Date
 
 import com.github.ceason.mllibextras.ParallelPipeline
 import org.apache.spark.ml.evaluation.Evaluator
-import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
+import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParallelCrossValidator, ParamGridBuilder}
 import org.apache.spark.ml.{Pipeline, PipelineStage}
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
@@ -49,7 +49,7 @@ case class KaggleRecipe(
 			.setStages(transformers.toArray)
 //			.setStages(transformers.toArray :+ estimator)
 
-		val cv = new CrossValidator()
+		val cv = new ParallelCrossValidator()
 			.setEstimator(pipeline)
 			.setEvaluator(evaluator)
 			.setEstimatorParamMaps(paramGridBuilder.build())
