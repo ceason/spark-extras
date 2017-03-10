@@ -12,7 +12,7 @@ import org.scalatest.FlatSpec
 /**
   *
   */
-class KaggleRecipeTest extends FlatSpec with LocalSpark {
+class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 
 
 	// this is where common stuff would go (datasets, target column etc)
