@@ -76,6 +76,7 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		.setLabelCol(labelCol)
 		.setFeaturesCol("indexedFeatures")
 
+
 	val numericCols: List[String] = List("actor_1_facebook_likes",
 		"actor_2_facebook_likes",
 		"actor_3_facebook_likes",
@@ -106,6 +107,35 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 		//		"movie_title",
 		"language"
 	)
+
+	val splittableCols: List[String] = List(
+		"director_name",
+		"genres",
+		"plot_keywords",
+		//		"movie_imdb_link",
+		"movie_title",
+		"actor_1_name",
+				"actor_2_name",
+				"actor_3_name",
+				"color"
+	)
+
+	val wordVectorizers: List[PipelineStage] = splittableCols.flatMap { col ⇒
+		val splitter = new RegexTokenizer()
+			.setInputCol(col)
+			.setOutputCol(s"tokenized_$col")
+			.setToLowercase(true)
+			.setPattern("[\\s\\|]+")
+
+		val hasher = new HashingTF()
+			.setInputCol(s"tokenized_$col")
+			.setOutputCol("tf_" + col)
+			.setBinary(true)
+			.setNumFeatures(256)
+
+		splitter :: hasher :: Nil
+	}
+	val wordVectorCols: List[String] = splittableCols.map("tf_" + _)
 
 	val strIndexers: List[StringIndexerModel] = stringCols.map { col ⇒
 		new StringIndexer()
@@ -138,30 +168,32 @@ class KaggleIMDBRecipeTest extends FlatSpec with LocalSpark {
 
 	val recipe2: KaggleRecipe = recipeTemplate("imdb_rfr",
 		new ParamGridBuilder()
-			.addGrid(rf.numTrees, 15 to 75 by 15)
+			.addGrid(rf.numTrees, 15 to 45 by 15)
 			.addGrid(rf.featureSubsetStrategy, Seq("onethird", "sqrt", "log2"))
 			.addGrid(rf.maxDepth, 3 to 9 by 3),
-		strIndexers ++ List(
+		wordVectorizers ++ strIndexers ++ List(
 			new VectorAssembler()
-				.setInputCols((numericCols ++ stringColsIndexed).toArray)
-				.setOutputCol("features"),
-			new VectorIndexer()
-				.setInputCol("features")
-				.setOutputCol("indexedFeatures")
-				.setMaxCategories(4),
-			new ChiSqSelector()
-				.setNumTopFeatures(22)
-				.setFeaturesCol("indexedFeatures")
-				.setLabelCol(labelCol)
-				.setOutputCol("selectedFeatures"),
-			rf
+				.setInputCols((numericCols ++
+					stringColsIndexed ++
+					wordVectorCols
+					).toArray)
+				.setOutputCol("selectedFeatures")
+			//			,new VectorIndexer()
+			//				.setInputCol("features")
+			//				.setOutputCol("indexedFeatures")
+			//				.setMaxCategories(4)
+			//			, new ChiSqSelector()
+			//				.setNumTopFeatures(22)
+			//				.setFeaturesCol("features")
+			//				.setLabelCol(labelCol)
+			//				.setOutputCol("selectedFeatures")
+			, rf
 		))
 
 	val start = System.currentTimeMillis
 
 	//	recipe2.transformedData.printSchema()
 	//	recipe2.transformedData.show()
-	recipe2.trainedModel
 	recipe2.writeCsv("id", "imdb_score as imdb_score_yhat")
 
 	val duration = (System.currentTimeMillis - start) / 1000d
